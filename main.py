@@ -109,18 +109,24 @@ def main():
                 # Get prices for all assets
                 prices = {}
                 if real_balances:
-                    for asset in real_balances.keys():
+                    # Get all assets with non-zero balances
+                    assets = [asset for asset, data in real_balances.items() 
+                             if float(data.get('total', 0)) > 0]
+                    
+                    if assets:
                         try:
-                            # This is a placeholder - you'll need to implement get_current_price in market_data.py
-                            # or use an external API to get current prices
-                            if hasattr(market_data, 'get_current_price'):
-                                prices[asset] = market_data.get_current_price(f"{asset}USDT")
-                            else:
-                                # Fallback to 0 if price data is not available
-                                prices[asset] = 0.0
+                            # Get all prices at once using the market_data provider
+                            prices = market_data.get_current_prices(assets)
+                            
+                            # If any prices are still missing, set them to 0
+                            for asset in assets:
+                                if asset not in prices:
+                                    print(f"Warning: No price available for {asset}")
+                                    prices[asset] = 0.0
                         except Exception as e:
-                            print(f"Error getting price for {asset}: {e}")
-                            prices[asset] = 0.0
+                            print(f"Error getting prices: {e}")
+                            # Initialize all prices to 0 if there's an error
+                            prices = {asset: 0.0 for asset in assets}
                 
                 if not real_balances:
                     st.warning("No balance data available. Please check your API credentials.")

@@ -1,8 +1,11 @@
 import yfinance as yf
 import requests
-from typing import Dict, List
+from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 import time
+import json
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 class MarketDataProvider:
     def __init__(self):
@@ -42,28 +45,105 @@ class MarketDataProvider:
         }
         self.stablecoin_price = 1.0
 
+    def _create_session(self):
+        """Create a requests session with retry logic"""
+        session = requests.Session()
+        retries = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET"]
+        )
+        session.mount('https://', HTTPAdapter(max_retries=retries))
+        return session
+
+    def _get_price_from_yahoo(self, symbol: str) -> Optional[float]:
+        """Get price from Yahoo Finance"""
+        try:
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period="1d")
+            if not hist.empty and 'Close' in hist.columns:
+                return float(hist['Close'].iloc[-1])
+        except Exception as e:
+            print(f"Yahoo Finance error for {symbol}: {e}")
+        return None
+
+    def _get_price_from_coingecko(self, token_id: str) -> Optional[float]:
+        """Get price from CoinGecko API"""
+        try:
+            url = f"https://api.coingecko.com/api/v3/simple/price?ids={token_id}&vs_currencies=usd"
+            session = self._create_session()
+            response = session.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            return data.get(token_id, {}).get('usd')
+        except Exception as e:
+            print(f"CoinGecko API error for {token_id}: {e}")
+        return None
+
     def get_current_prices(self, tokens: List[str]) -> Dict[str, float]:
-        """Get current prices for list of tokens"""
+        """Get current prices for list of tokens using multiple data sources"""
         prices = {}
+        
+        # Map of token symbols to their CoinGecko IDs
+        coingecko_ids = {
+            'BTC': 'bitcoin',
+            'ETH': 'ethereum',
+            'ADA': 'cardano',
+            'DOT': 'polkadot',
+            'MATIC': 'polygon',
+            'LINK': 'chainlink',
+            'UNI': 'uniswap',
+            'SOL': 'solana',
+            'AVAX': 'avalanche-2',
+            'NEXO': 'nexo',
+            'USDT': 'tether',
+            'USDC': 'usd-coin',
+            'DAI': 'dai',
+            'BUSD': 'binance-usd',
+            'XRP': 'ripple',
+            'DOGE': 'dogecoin',
+            'LTC': 'litecoin',
+            'ATOM': 'cosmos',
+            'XLM': 'stellar',
+            'ALGO': 'algorand',
+            'ETC': 'ethereum-classic',
+            'XMR': 'monero',
+            'ZEC': 'zcash',
+            'DASH': 'dash'
+        }
 
         for token in tokens:
-            if token in ['USDT', 'USDC']:
+            price = None
+            
+            # Skip if already processed
+            if token in prices:
+                continue
+                
+            # Handle stablecoins
+            if token in ['USDT', 'USDC', 'DAI', 'BUSD']:
                 prices[token] = self.stablecoin_price
-            elif token in self.crypto_symbols:
-                try:
-                    ticker = yf.Ticker(self.crypto_symbols[token])
-                    hist = ticker.history(period="1d")
-                    if not hist.empty:
-                        prices[token] = float(hist['Close'].iloc[-1])
-                    else:
-                        # Fallback to a mock price if no data
-                        prices[token] = self._get_mock_price(token)
-                except Exception as e:
-                    print(f"Error fetching price for {token}: {e}")
-                    prices[token] = self._get_mock_price(token)
-            else:
-                prices[token] = self._get_mock_price(token)
-
+                continue
+                
+            # Try Yahoo Finance first
+            if token in self.crypto_symbols:
+                price = self._get_price_from_yahoo(self.crypto_symbols[token])
+            
+            # If Yahoo fails, try CoinGecko
+            if price is None and token in coingecko_ids:
+                print(f"Trying CoinGecko for {token}...")
+                price = self._get_price_from_coingecko(coingecko_ids[token])
+            
+            # If both APIs fail, use mock price
+            if price is None:
+                print(f"Using mock price for {token}")
+                price = self._get_mock_price(token)
+            
+            prices[token] = price
+            
+            # Add a small delay to avoid rate limiting
+            time.sleep(0.2)
+            
         return prices
 
     def get_historical_prices(self, token: str, days: int = 30) -> Dict[str, List]:
