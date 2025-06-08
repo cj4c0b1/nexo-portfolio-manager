@@ -46,9 +46,19 @@ cp .env.example .env
 streamlit run app/main.py
 ```
 
+## Get Started with Nexo
+
+To use this portfolio manager, you'll need a Nexo account. You can sign up using this referral link to get a welcome bonus:
+
+🔗 [Sign up for Nexo](https://nexo.com/ref/itecnzlgox?src=web-link)
+
+After creating your account, you can connect it to this portfolio manager using the API credentials from your Nexo Pro account.
+
 ## Configuration
 
 ### Nexo Pro API Setup
+
+> **Note**: You'll need to create a Nexo Pro account separately after signing up for the main Nexo account.
 
 1. Log in to your Nexo Pro account
 2. Go to API Management section
